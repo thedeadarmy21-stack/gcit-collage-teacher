@@ -16,7 +16,6 @@ const Login = () => {
     setLoading(true);
 
     try {
-      // Simple login - No deviceId needed
       const response = await axios.post(`${API_BASE}/api/auth/login`, {
         username,
         password,
@@ -36,8 +35,10 @@ const Login = () => {
     <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4">
       <div className="bg-slate-800 p-8 rounded-3xl shadow-2xl w-full max-w-sm border border-slate-700">
         <div className="text-center mb-8">
-          <div className="text-5xl mb-3">🎓</div>
-          <h2 className="text-2xl font-bold text-white">GCIT Collage Login</h2>
+          <div className="h-24 w-24 bg-white rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-600 p-1 shadow-lg shadow-green-900/50">
+            <img src="/logo.png" alt="GCIT Logo" className="h-full w-full object-contain rounded-full" />
+          </div>
+          <h2 className="text-2xl font-bold text-white">GCIT Collage</h2>
           <p className="text-slate-400 text-sm mt-1">Attendance System</p>
         </div>
         
@@ -50,7 +51,7 @@ const Login = () => {
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-4 py-3 bg-slate-900 border border-slate-700 text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+              className="w-full px-4 py-3 bg-slate-900 border border-slate-700 text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 transition"
               placeholder="Enter username"
               required
             />
@@ -62,7 +63,7 @@ const Login = () => {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 bg-slate-900 border border-slate-700 text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+              className="w-full px-4 py-3 bg-slate-900 border border-slate-700 text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 transition"
               placeholder="Enter password"
               required
             />
@@ -71,7 +72,7 @@ const Login = () => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-xl hover:bg-blue-700 transition duration-200 shadow-lg shadow-blue-900/50 mt-4"
+            className="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-xl hover:bg-green-700 transition duration-200 shadow-lg shadow-green-900/50 mt-4"
           >
             {loading ? 'Logging in...' : 'Login'}
           </button>
