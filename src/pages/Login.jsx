@@ -16,16 +16,10 @@ const Login = () => {
     setLoading(true);
 
     try {
-      let deviceId = localStorage.getItem('deviceId');
-      if (!deviceId) {
-        deviceId = "DEV-" + Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
-        localStorage.setItem('deviceId', deviceId);
-      }
-
+      // Simple login - No deviceId needed
       const response = await axios.post(`${API_BASE}/api/auth/login`, {
         username,
         password,
-        deviceId,
       });
 
       localStorage.setItem('teacherToken', response.data.token);
