@@ -9,13 +9,16 @@ const Home = () => {
   const [loading, setLoading] = useState(true);
   const [selectedClass, setSelectedClass] = useState('');
   
+  // 🚀 NAYA: Dynamic Classes State
+  const [availableClasses, setAvailableClasses] = useState([]);
+  
   const token = localStorage.getItem('teacherToken');
-  const teacherData = JSON.parse(localStorage.getItem('teacherData') || '{}');
   const schoolName = "GCIT COLLAGE";
   const todayDate = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
 
   useEffect(() => {
     if (!token) navigate('/');
+    
     const fetchTodayAttendance = async () => {
       try {
         const res = await axios.get(`${API_BASE}/api/attendance/today`, {
@@ -24,11 +27,24 @@ const Home = () => {
         setTodayCount(res.data.count);
       } catch (err) {
         console.log('Error fetching count');
+      }
+    };
+
+    const fetchClasses = async () => {
+      try {
+        const res = await axios.get(`${API_BASE}/api/attendance/classes`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setAvailableClasses(res.data.classes);
+      } catch (err) {
+        console.log('Error fetching classes');
       } finally {
         setLoading(false);
       }
     };
+
     fetchTodayAttendance();
+    fetchClasses();
   }, [token, navigate]);
 
   const handleLogout = () => {
@@ -94,17 +110,14 @@ const Home = () => {
               className="w-full px-4 py-3 bg-slate-900 border border-slate-700 text-white rounded-xl focus:ring-2 focus:ring-green-500 font-bold text-center appearance-none"
             >
               <option value="">-- Select Class --</option>
-              <option value="1">Class 1</option>
-              <option value="2">Class 2</option>
-              <option value="3">Class 3</option>
-              <option value="4">Class 4</option>
-              <option value="5">Class 5</option>
-              <option value="6">Class 6</option>
-              <option value="7">Class 7</option>
-              <option value="8">Class 8</option>
-              <option value="9">Class 9</option>
-              <option value="10">Class 10</option>
+              {/* 🚀 Dynamic classes map kar rahe hain */}
+              {availableClasses.map((cls, idx) => (
+                <option key={idx} value={cls}>Class {cls}</option>
+              ))}
             </select>
+            {availableClasses.length === 0 && (
+              <p className="text-red-400 text-xs mt-2">Koi class nahi mili. Pehle Admin panel se student add karein.</p>
+            )}
           </div>
 
           <button 
@@ -112,7 +125,7 @@ const Home = () => {
             className="w-full bg-green-600 text-white font-bold py-4 px-4 rounded-xl hover:bg-green-500 transition duration-200 shadow-lg shadow-green-900/50 flex items-center justify-center gap-3 text-lg"
           >
             <span>Start Scanning</span>
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
           </button>
         </div>
 
@@ -128,11 +141,11 @@ const Home = () => {
 
       <nav className="fixed bottom-0 w-full bg-slate-800 border-t border-slate-700 flex justify-around p-3 pb-safe z-20">
         <button className="flex flex-col items-center text-green-500">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
           <span className="text-[10px] font-bold tracking-wider">HOME</span>
         </button>
         <button onClick={handleStartScan} className="flex flex-col items-center text-slate-500 hover:text-green-500 transition-colors">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
           <span className="text-[10px] font-bold tracking-wider">SCAN</span>
         </button>
       </nav>
