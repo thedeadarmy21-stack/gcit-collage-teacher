@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { BrowserMultiFormatReader } from '@zxing/browser';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
-import * as faceapi from 'face-api.js'; // 🚀 AI Library Import
+import * as faceapi from 'face-api.js'; 
 import { API_BASE } from '../config';
 
 const Scan = () => {
@@ -13,6 +13,7 @@ const Scan = () => {
   const [isFaceMode, setIsFaceMode] = useState(false); 
   const [modelsLoaded, setModelsLoaded] = useState(false);
   const [faceStatus, setFaceStatus] = useState('Initializing AI...');
+  const [studentsData, setStudentsData] = useState([]); // 🚀 Student data cache
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -20,7 +21,6 @@ const Scan = () => {
   const codeReaderRef = useRef(null);
   const controlsRef = useRef(null);
   const videoRef = useRef(null);
-  const canvasRef = useRef(null);
   const faceIntervalRef = useRef(null);
   
   const token = localStorage.getItem('teacherToken');
@@ -29,7 +29,7 @@ const Scan = () => {
   const queryParams = new URLSearchParams(location.search);
   const targetClass = queryParams.get('class'); 
 
-  // 🚀 1. Load AI Models on Component Mount
+  // 🚀 1. Load AI Models
   useEffect(() => {
     const loadModels = async () => {
       try {
@@ -46,6 +46,21 @@ const Scan = () => {
     };
     loadModels();
   }, []);
+
+  // Fetch students data (taaki face match ke time bar-bar API call na karein)
+  useEffect(() => {
+    const fetchStudents = async () => {
+      try {
+        const res = await axios.get(`${API_BASE}/api/students`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setStudentsData(res.data.students);
+      } catch (err) {
+        console.error("Error fetching students for face match", err);
+      }
+    };
+    if (token) fetchStudents();
+  }, [token]);
 
   useEffect(() => {
     if (!token) navigate('/');
@@ -105,7 +120,7 @@ const Scan = () => {
     };
   }, [token, targetClass, isFaceMode]);
 
-  // 🚀 2. Face Scan Logic
+  // 🚀 2. Face Scan Logic (Camera + Detection)
   const startFaceScan = async () => {
     if (!modelsLoaded) {
       setError("AI abhi load ho raha hai. Thoda wait karein.");
@@ -116,27 +131,25 @@ const Scan = () => {
     setFaceStatus('Starting Camera...');
 
     try {
-      // Camera Start
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
 
-      // Face Detection Loop (Every 1 second)
+      setFaceStatus('Scanning... Face dhoond raha hoon.');
+
+      // Har 1 second me check karega
       faceIntervalRef.current = setInterval(async () => {
         if (videoRef.current && videoRef.current.readyState === 4) {
           const detections = await faceapi.detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
           
           if (detections) {
-            // Face Detected! Ab database se match karna hai
             setFaceStatus('Face Detected. Matching...');
-            handleFaceMatch(detections.descriptor);
             clearInterval(faceIntervalRef.current); // Rok do loop ko
-          } else {
-            setFaceStatus('Scanning... Face dhoond raha hoon.');
+            handleFaceMatch(detections.descriptor);
           }
         }
-      }, 1000); // Har 1 second me check karega
+      }, 1000);
       
     } catch (err) {
       console.error("Face Camera Error:", err);
@@ -144,26 +157,21 @@ const Scan = () => {
     }
   };
 
-  // 🚀 3. Match Face with Database
+  // 🚀 3. Match Face with Database (With Base64 Image Fix)
   const handleFaceMatch = async (descriptor) => {
     setLoading(true);
     try {
-      // Frontend par hum photo fetch karenge aur compare karenge
-      // (Note: Real app me ye backend par hona chahiye, par demo ke liye yahan kar rahe hain)
-      
-      const res = await axios.get(`${API_BASE}/api/students`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      const students = res.data.students;
       let bestMatch = null;
-      let minDistance = 0.6; // Threshold (0.6 means 60% match)
+      let minDistance = 0.6; // Threshold
 
-      for (const student of students) {
+      for (const student of studentsData) {
         if (!student.photo) continue;
 
-        // Student ki photo se face descriptor nikalna
-        const img = await faceapi.fetchImage(student.photo);
+        // Base64 ko HTML Image me convert karo taaki AI padh sake
+        const img = new Image();
+        img.src = student.photo;
+        await new Promise((resolve) => { img.onload = resolve; });
+
         const detection = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
 
         if (detection) {
@@ -176,7 +184,6 @@ const Scan = () => {
       }
 
       if (bestMatch) {
-        // Match Mil Gaya! Ab attendance lagao
         await markAttendance(bestMatch.qrCode);
       } else {
         setError('Koi match nahi mila. Dobara koshish karein.');
@@ -193,7 +200,7 @@ const Scan = () => {
     }
   };
 
-  // 🚀 4. Mark Attendance (Common for both QR & Face)
+  // 🚀 4. Mark Attendance
   const markAttendance = async (qrCodeValue) => {
     try {
       const response = await axios.post(
