@@ -13,7 +13,7 @@ const Scan = () => {
   const [isFaceMode, setIsFaceMode] = useState(false); 
   const [modelsLoaded, setModelsLoaded] = useState(false);
   const [faceStatus, setFaceStatus] = useState('Initializing AI...');
-  const [studentsData, setStudentsData] = useState([]); // 🚀 Student data cache
+  const [studentsData, setStudentsData] = useState([]);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -29,7 +29,6 @@ const Scan = () => {
   const queryParams = new URLSearchParams(location.search);
   const targetClass = queryParams.get('class'); 
 
-  // 🚀 1. Load AI Models
   useEffect(() => {
     const loadModels = async () => {
       try {
@@ -41,13 +40,12 @@ const Scan = () => {
         setFaceStatus('AI Ready. Align face.');
       } catch (err) {
         console.error("Model Load Error:", err);
-        setFaceStatus('AI Load Failed. Check console.');
+        setFaceStatus('AI Load Failed.');
       }
     };
     loadModels();
   }, []);
 
-  // Fetch students data (taaki face match ke time bar-bar API call na karein)
   useEffect(() => {
     const fetchStudents = async () => {
       try {
@@ -56,7 +54,7 @@ const Scan = () => {
         });
         setStudentsData(res.data.students);
       } catch (err) {
-        console.error("Error fetching students for face match", err);
+        console.error("Error fetching students", err);
       }
     };
     if (token) fetchStudents();
@@ -80,7 +78,6 @@ const Scan = () => {
     fetchCount();
   }, [token, navigate, targetClass]);
 
-  // QR Scan Logic
   const startCamera = () => {
     if (controlsRef.current) {
       controlsRef.current.stop();
@@ -120,7 +117,6 @@ const Scan = () => {
     };
   }, [token, targetClass, isFaceMode]);
 
-  // 🚀 2. Face Scan Logic (Camera + Detection)
   const startFaceScan = async () => {
     if (!modelsLoaded) {
       setError("AI abhi load ho raha hai. Thoda wait karein.");
@@ -131,21 +127,23 @@ const Scan = () => {
     setFaceStatus('Starting Camera...');
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      // 🚀 CAMERA BACK (Environment) SET KIYA HAI
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: { exact: "environment" } } 
+      });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
 
       setFaceStatus('Scanning... Face dhoond raha hoon.');
 
-      // Har 1 second me check karega
       faceIntervalRef.current = setInterval(async () => {
         if (videoRef.current && videoRef.current.readyState === 4) {
           const detections = await faceapi.detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
           
           if (detections) {
             setFaceStatus('Face Detected. Matching...');
-            clearInterval(faceIntervalRef.current); // Rok do loop ko
+            clearInterval(faceIntervalRef.current);
             handleFaceMatch(detections.descriptor);
           }
         }
@@ -153,21 +151,19 @@ const Scan = () => {
       
     } catch (err) {
       console.error("Face Camera Error:", err);
-      setError("Camera on nahi ho paya. Permission check karein.");
+      setError("Camera on nahi ho paya. Back camera permission check karein.");
     }
   };
 
-  // 🚀 3. Match Face with Database (With Base64 Image Fix)
   const handleFaceMatch = async (descriptor) => {
     setLoading(true);
     try {
       let bestMatch = null;
-      let minDistance = 0.6; // Threshold
+      let minDistance = 0.6;
 
       for (const student of studentsData) {
         if (!student.photo) continue;
 
-        // Base64 ko HTML Image me convert karo taaki AI padh sake
         const img = new Image();
         img.src = student.photo;
         await new Promise((resolve) => { img.onload = resolve; });
@@ -200,7 +196,6 @@ const Scan = () => {
     }
   };
 
-  // 🚀 4. Mark Attendance
   const markAttendance = async (qrCodeValue) => {
     try {
       const response = await axios.post(
@@ -267,7 +262,6 @@ const Scan = () => {
         </div>
       </header>
 
-      {/* Toggle Button */}
       <div className="flex justify-center mt-4 px-4">
         <div className="bg-slate-800 p-1 rounded-xl flex w-full max-w-sm border border-slate-700">
           <button 
@@ -303,7 +297,6 @@ const Scan = () => {
         <div className="w-full max-w-sm bg-slate-800 rounded-3xl shadow-2xl overflow-hidden border border-slate-700 relative">
           
           {!isFaceMode ? (
-            // QR SCAN UI
             <div className={`p-4 relative ${scanResult || loading || error ? 'hidden' : 'block'}`}>
               <div className="absolute top-6 left-6 right-6 h-1 bg-red-500 shadow-[0_0_20px_rgba(239,68,68,0.9)] animate-scanline z-20 pointer-events-none rounded-full"></div>
               <video id="reader" className="w-full rounded-2xl overflow-hidden bg-slate-900 border-2 border-slate-700"></video>
@@ -318,7 +311,6 @@ const Scan = () => {
               </div>
             </div>
           ) : (
-            // 🚀 FACE SCAN UI
             <div className={`p-6 text-center ${scanResult || loading || error ? 'hidden' : 'block'}`}>
               <div className="w-64 h-64 mx-auto rounded-full bg-slate-900 border-4 border-dashed border-green-500 flex items-center justify-center mb-6 relative overflow-hidden">
                  <video ref={videoRef} autoPlay muted className="absolute inset-0 w-full h-full object-cover"></video>
