@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { BrowserMultiFormatReader } from '@zxing/browser';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
+import * as faceapi from 'face-api.js'; // 🚀 AI Library Import
 import { API_BASE } from '../config';
 
 const Scan = () => {
@@ -9,20 +10,42 @@ const Scan = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [todayCount, setTodayCount] = useState(0);
-  const [isFaceMode, setIsFaceMode] = useState(false); // 🚀 Face mode state
-  
+  const [isFaceMode, setIsFaceMode] = useState(false); 
+  const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [faceStatus, setFaceStatus] = useState('Initializing AI...');
+
   const navigate = useNavigate();
   const location = useLocation();
   
   const codeReaderRef = useRef(null);
   const controlsRef = useRef(null);
-  const videoRef = useRef(null); // Face scan ke liye
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const faceIntervalRef = useRef(null);
   
   const token = localStorage.getItem('teacherToken');
   const schoolName = "GCIT COLLAGE";
 
   const queryParams = new URLSearchParams(location.search);
   const targetClass = queryParams.get('class'); 
+
+  // 🚀 1. Load AI Models on Component Mount
+  useEffect(() => {
+    const loadModels = async () => {
+      try {
+        const MODEL_URL = '/models';
+        await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+        setModelsLoaded(true);
+        setFaceStatus('AI Ready. Align face.');
+      } catch (err) {
+        console.error("Model Load Error:", err);
+        setFaceStatus('AI Load Failed. Check console.');
+      }
+    };
+    loadModels();
+  }, []);
 
   useEffect(() => {
     if (!token) navigate('/');
@@ -42,7 +65,7 @@ const Scan = () => {
     fetchCount();
   }, [token, navigate, targetClass]);
 
-  // QR Scan Logic (Same as before)
+  // QR Scan Logic
   const startCamera = () => {
     if (controlsRef.current) {
       controlsRef.current.stop();
@@ -82,39 +105,137 @@ const Scan = () => {
     };
   }, [token, targetClass, isFaceMode]);
 
-  // 🚀 Face Scan Logic (Placeholder - Face API will load here)
-  const startFaceScan = () => {
-    // Yahan hum face-api.js load karke camera start karenge
-    setError("Face Recognition feature ready hai. (API integration needed)");
+  // 🚀 2. Face Scan Logic
+  const startFaceScan = async () => {
+    if (!modelsLoaded) {
+      setError("AI abhi load ho raha hai. Thoda wait karein.");
+      return;
+    }
+
+    setError('');
+    setFaceStatus('Starting Camera...');
+
+    try {
+      // Camera Start
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+
+      // Face Detection Loop (Every 1 second)
+      faceIntervalRef.current = setInterval(async () => {
+        if (videoRef.current && videoRef.current.readyState === 4) {
+          const detections = await faceapi.detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+          
+          if (detections) {
+            // Face Detected! Ab database se match karna hai
+            setFaceStatus('Face Detected. Matching...');
+            handleFaceMatch(detections.descriptor);
+            clearInterval(faceIntervalRef.current); // Rok do loop ko
+          } else {
+            setFaceStatus('Scanning... Face dhoond raha hoon.');
+          }
+        }
+      }, 1000); // Har 1 second me check karega
+      
+    } catch (err) {
+      console.error("Face Camera Error:", err);
+      setError("Camera on nahi ho paya. Permission check karein.");
+    }
   };
 
-  const handleScanSuccess = async (decodedText) => {
-    if (loading) return;
+  // 🚀 3. Match Face with Database
+  const handleFaceMatch = async (descriptor) => {
     setLoading(true);
-    setError('');
-    setScanResult(null);
+    try {
+      // Frontend par hum photo fetch karenge aur compare karenge
+      // (Note: Real app me ye backend par hona chahiye, par demo ke liye yahan kar rahe hain)
+      
+      const res = await axios.get(`${API_BASE}/api/students`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      const students = res.data.students;
+      let bestMatch = null;
+      let minDistance = 0.6; // Threshold (0.6 means 60% match)
 
+      for (const student of students) {
+        if (!student.photo) continue;
+
+        // Student ki photo se face descriptor nikalna
+        const img = await faceapi.fetchImage(student.photo);
+        const detection = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+
+        if (detection) {
+          const distance = faceapi.euclideanDistance(descriptor, detection.descriptor);
+          if (distance < minDistance) {
+            minDistance = distance;
+            bestMatch = student;
+          }
+        }
+      }
+
+      if (bestMatch) {
+        // Match Mil Gaya! Ab attendance lagao
+        await markAttendance(bestMatch.qrCode);
+      } else {
+        setError('Koi match nahi mila. Dobara koshish karein.');
+        setFaceStatus('Match Failed.');
+        setLoading(false);
+        restartFaceScan();
+      }
+
+    } catch (err) {
+      console.error("Face Match Error:", err);
+      setError("Face match me error aya.");
+      setLoading(false);
+      restartFaceScan();
+    }
+  };
+
+  // 🚀 4. Mark Attendance (Common for both QR & Face)
+  const markAttendance = async (qrCodeValue) => {
     try {
       const response = await axios.post(
         `${API_BASE}/api/attendance/scan`,
-        { qrCode: decodedText, targetClass: targetClass }, 
+        { qrCode: qrCodeValue, targetClass: targetClass }, 
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setScanResult(response.data);
       setTodayCount(prev => prev + 1);
     } catch (err) {
       setError(err.response?.data?.message || 'Attendance failed. Try again.');
-      if (controlsRef.current) controlsRef.current.stop();
     } finally {
       setLoading(false);
     }
   };
 
+  const handleScanSuccess = (decodedText) => {
+    if (loading) return;
+    setLoading(true);
+    setError('');
+    setScanResult(null);
+    markAttendance(decodedText);
+  };
+
+  const restartFaceScan = () => {
+    setError('');
+    setScanResult(null);
+    setFaceStatus('Align face in circle.');
+    startFaceScan();
+  };
+
   const resetScanner = () => {
     setScanResult(null);
     setError('');
-    if (!isFaceMode) startCamera();
-    navigate(`/scan?class=${targetClass}`, { replace: true });
+    if (faceIntervalRef.current) clearInterval(faceIntervalRef.current);
+    
+    if (isFaceMode) {
+      restartFaceScan();
+    } else {
+      startCamera();
+      navigate(`/scan?class=${targetClass}`, { replace: true });
+    }
   };
 
   return (
@@ -139,17 +260,31 @@ const Scan = () => {
         </div>
       </header>
 
-      {/* 🚀 TOGGLE BUTTON: QR vs Face */}
+      {/* Toggle Button */}
       <div className="flex justify-center mt-4 px-4">
         <div className="bg-slate-800 p-1 rounded-xl flex w-full max-w-sm border border-slate-700">
           <button 
-            onClick={() => { setIsFaceMode(false); setScanResult(null); setError(''); }}
+            onClick={() => { 
+              setIsFaceMode(false); 
+              setScanResult(null); 
+              setError(''); 
+              if (faceIntervalRef.current) clearInterval(faceIntervalRef.current);
+              if (videoRef.current && videoRef.current.srcObject) {
+                videoRef.current.srcObject.getTracks().forEach(track => track.stop());
+              }
+            }}
             className={`flex-1 py-2 rounded-lg font-bold text-sm transition-all ${!isFaceMode ? 'bg-green-600 text-white shadow-md' : 'text-slate-400'}`}
           >
             📷 QR Scan
           </button>
           <button 
-            onClick={() => { setIsFaceMode(true); setScanResult(null); setError(''); }}
+            onClick={() => { 
+              setIsFaceMode(true); 
+              setScanResult(null); 
+              setError(''); 
+              if (controlsRef.current) controlsRef.current.stop();
+              if (modelsLoaded) startFaceScan();
+            }}
             className={`flex-1 py-2 rounded-lg font-bold text-sm transition-all ${isFaceMode ? 'bg-green-600 text-white shadow-md' : 'text-slate-400'}`}
           >
             😊 Face Scan
@@ -161,7 +296,7 @@ const Scan = () => {
         <div className="w-full max-w-sm bg-slate-800 rounded-3xl shadow-2xl overflow-hidden border border-slate-700 relative">
           
           {!isFaceMode ? (
-            // QR SCAN UI (Same as before)
+            // QR SCAN UI
             <div className={`p-4 relative ${scanResult || loading || error ? 'hidden' : 'block'}`}>
               <div className="absolute top-6 left-6 right-6 h-1 bg-red-500 shadow-[0_0_20px_rgba(239,68,68,0.9)] animate-scanline z-20 pointer-events-none rounded-full"></div>
               <video id="reader" className="w-full rounded-2xl overflow-hidden bg-slate-900 border-2 border-slate-700"></video>
@@ -177,23 +312,31 @@ const Scan = () => {
             </div>
           ) : (
             // 🚀 FACE SCAN UI
-            <div className="p-6 text-center">
-              <div className="w-48 h-48 mx-auto rounded-full bg-slate-900 border-4 border-dashed border-green-500 flex items-center justify-center mb-6 relative overflow-hidden">
-                 <span className="text-6xl">😊</span>
-                 {/* Camera view will go here */}
+            <div className={`p-6 text-center ${scanResult || loading || error ? 'hidden' : 'block'}`}>
+              <div className="w-64 h-64 mx-auto rounded-full bg-slate-900 border-4 border-dashed border-green-500 flex items-center justify-center mb-6 relative overflow-hidden">
+                 <video ref={videoRef} autoPlay muted className="absolute inset-0 w-full h-full object-cover"></video>
+                 <div className="absolute inset-0 border-4 border-green-500/50 rounded-full animate-pulse pointer-events-none"></div>
               </div>
-              <h3 className="text-white font-bold text-xl mb-2">Face Recognition</h3>
-              <p className="text-slate-400 text-sm mb-6">Align face in circle & click start.</p>
-              <button onClick={startFaceScan} className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700">
-                Start Face Scan
-              </button>
+              <h3 className="text-white font-bold text-xl mb-2">AI Face Scan</h3>
+              <p className={`text-sm mb-6 font-medium ${modelsLoaded ? 'text-green-400' : 'text-yellow-400 animate-pulse'}`}>
+                {faceStatus}
+              </p>
+              {!modelsLoaded ? (
+                <button disabled className="w-full bg-slate-600 text-slate-400 py-3 rounded-xl font-bold cursor-not-allowed">
+                  Loading AI...
+                </button>
+              ) : (
+                <button onClick={startFaceScan} className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition">
+                  Start Face Scan
+                </button>
+              )}
             </div>
           )}
 
           {loading && (
             <div className="p-12 text-center animate-pulse">
               <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-slate-700 border-t-green-500 mb-4"></div>
-              <p className="text-green-400 font-bold tracking-wider">MARKING ATTENDANCE...</p>
+              <p className="text-green-400 font-bold tracking-wider">PROCESSING...</p>
             </div>
           )}
 
